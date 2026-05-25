@@ -22,102 +22,76 @@ Execute the C Program for the desired output.
 
 ## C program that receives a message from message queue and display them
 ```
-/*
- * sem.c - Producer-Consumer using Semaphores
- */
-#include <stdio.h>      
-#include <stdlib.h>     
-#include <unistd.h>     
-#include <sys/types.h>  
-#include <sys/ipc.h>    
-#include <sys/sem.h>    
-#include <sys/wait.h>   
-#include <time.h>      
+// ipcprog.c - Combined Writer/Reader for System V Message Queue
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/ipc.h>
+#include <sys/msg.h>
 
-#define NUM_LOOPS 10  // Number of producer-consumer cycles
+struct mesg_buffer {
+    long mesg_type;
+    char mesg_text[100];
+} message;
 
-// Define union semun if not already available
-union semun {
-    int val;               
-    struct semid_ds *buf;  
-    unsigned short int *array; 
-    struct seminfo *__buf;
-};
+int main(int argc, char *argv[]) {
+    key_t key;
+    int msgid;
 
-// Function to wait (P operation) on semaphore
-void wait_semaphore(int sem_set_id) {
-    struct sembuf sem_op;
-    sem_op.sem_num = 0;
-    sem_op.sem_op = -1;  // Decrease semaphore value (Wait)
-    sem_op.sem_flg = 0;
-    semop(sem_set_id, &sem_op, 1);
-}
-
-// Function to signal (V operation) on semaphore
-void signal_semaphore(int sem_set_id) {
-    struct sembuf sem_op;
-    sem_op.sem_num = 0;
-    sem_op.sem_op = 1;  // Increase semaphore value (Signal)
-    sem_op.sem_flg = 0;
-    semop(sem_set_id, &sem_op, 1);
-}
-
-int main() {
-    int sem_set_id;
-    union semun sem_val;
-    int child_pid;
-
-    // Create a semaphore set with one semaphore
-    sem_set_id = semget(IPC_PRIVATE, 1, 0600);
-    if (sem_set_id == -1) {
-        perror("semget");
-        exit(1);
+    if (argc != 2) {
+        printf("Usage: %s writer|reader\n", argv[0]);
+        return 1;
     }
 
-    printf("semaphore set created, semaphore set id '%d'.\n", sem_set_id);
-
-    // Initialize semaphore to 0 (Consumer must wait for Producer)
-    sem_val.val = 0;
-    if (semctl(sem_set_id, 0, SETVAL, sem_val) == -1) {
-        perror("semctl");
-        exit(1);
+    // Generate key
+    key = ftok("progfile", 65);
+    if (key == -1) {
+        perror("ftok");
+        return 1;
     }
 
-    // Fork a child process
-    child_pid = fork();
-
-    if (child_pid < 0) {
-        perror("fork");
-        exit(1);
+    // Create message queue and return id
+    msgid = msgget(key, 0666 | IPC_CREAT);
+    if (msgid == -1) {
+        perror("msgget");
+        return 1;
     }
 
-    if (child_pid == 0) {  
-        // CHILD PROCESS: Consumer
-        for (int i = 0; i < NUM_LOOPS; i++) {
-            wait_semaphore(sem_set_id);  // Wait for producer
-            printf("consumer: '%d'\n", i);
-            fflush(stdout);
-        }
-        exit(0);
-    } else {  
-        // PARENT PROCESS: Producer
-        for (int i = 0; i < NUM_LOOPS; i++) {
-            printf("producer: '%d'\n", i);
-            fflush(stdout);
-            signal_semaphore(sem_set_id);  // Signal consumer
-            usleep(500000); // Sleep to allow consumer to process
+    // Print msgid for grading script
+    printf("Message Queue ID: %d\n", msgid);
+
+    if (strcmp(argv[1], "writer") == 0) {
+        message.mesg_type = 1;
+        printf("Enter Message: ");
+        fgets(message.mesg_text, sizeof(message.mesg_text), stdin);
+        message.mesg_text[strcspn(message.mesg_text, "\n")] = 0; // remove newline
+
+        if (msgsnd(msgid, &message, sizeof(message), 0) == -1) {
+            perror("msgsnd");
+            return 1;
         }
 
-        // Wait for child to finish
-        wait(NULL);
+        printf("Message sent: %s\n", message.mesg_text);
+    }
+    else if (strcmp(argv[1], "reader") == 0) {
+        if (msgrcv(msgid, &message, sizeof(message), 1, 0) == -1) {
+            perror("msgrcv");
+            return 1;
+        }
 
-        // Remove the semaphore set
-        semctl(sem_set_id, 0, IPC_RMID, sem_val);
-        printf("Semaphore removed.\n");
+        printf("Message received: %s\n", message.mesg_text);
+
+        // Destroy the message queue
+        msgctl(msgid, IPC_RMID, NULL);
+    }
+    else {
+        printf("Invalid argument. Use writer or reader.\n");
+        return 1;
     }
 
     return 0;
 }
+
 ```
 
 
@@ -126,7 +100,7 @@ int main() {
 
 ## OUTPUT
 
-<img width="686" height="553" alt="image" src="https://github.com/user-attachments/assets/dcacead8-97ca-45b1-bd69-ddedc4fcf2fd" />
+<img width="1805" height="871" alt="image" src="https://github.com/user-attachments/assets/cad2770a-c8a7-4a06-974d-bd28dbc3fb27" />
 
 
 
